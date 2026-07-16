@@ -67,3 +67,6 @@ For production deployment instructions, please refer to the detailed [Deployment
 * **Frontend**: Vercel
 * **Smart Contract**: Base Sepolia
 * **File Storage**: Pinata IPFS
+![alt text](<Screenshot 2026-07-17 at 12.29.42 AM.png>)
+
+<video controls src="Screen Recording 2026-07-17 at 12.25.36 AM.mov" title="Title"></video>
