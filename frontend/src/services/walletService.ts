@@ -1,14 +1,26 @@
-import { BrowserProvider, Contract, type Signer } from "ethers";
+import { BrowserProvider, Contract, type Eip1193Provider, type Signer } from "ethers";
 
 import WarrantyRegistryAbi from "@/abi/WarrantyRegistry.json";
 
-const CHAIN_ID_HEX = `0x${Number(import.meta.env.VITE_CHAIN_ID ?? 84532).toString(16)}`;
+const CHAIN_ID_DECIMAL = Number(import.meta.env.VITE_CHAIN_ID ?? 84532);
+const CHAIN_ID_HEX = `0x${CHAIN_ID_DECIMAL.toString(16)}`;
 const CHAIN_RPC_URL = import.meta.env.VITE_CHAIN_RPC_URL ?? "https://sepolia.base.org";
 const CONTRACT_ADDRESS = import.meta.env.VITE_CONTRACT_ADDRESS ?? "";
+const WALLETCONNECT_PROJECT_ID = import.meta.env.VITE_WALLETCONNECT_PROJECT_ID as string | undefined;
+
+const WALLET_METHOD_STORAGE_KEY = "warrantyvault:walletMethod";
+
+export type WalletConnectionMethod = "injected" | "walletconnect";
 
 export class MetaMaskNotFoundError extends Error {
   constructor() {
-    super("MetaMask is not installed. Install it from metamask.io to continue.");
+    super("No browser wallet found. Install MetaMask from metamask.io, or connect a mobile wallet instead.");
+  }
+}
+
+export class WalletConnectNotConfiguredError extends Error {
+  constructor() {
+    super("Mobile wallet connection is not configured. Set VITE_WALLETCONNECT_PROJECT_ID to enable it.");
   }
 }
 
@@ -18,22 +30,92 @@ interface EthereumProvider {
   removeListener?: (event: string, handler: (...args: unknown[]) => void) => void;
 }
 
-function getEthereum(): EthereumProvider {
+interface WalletConnectProviderLike extends EthereumProvider {
+  accounts: string[];
+  session?: unknown;
+  connect: () => Promise<void>;
+  disconnect: () => Promise<void>;
+}
+
+let wcProvider: WalletConnectProviderLike | null = null;
+let wcProviderPromise: Promise<WalletConnectProviderLike> | null = null;
+
+function getInjectedEthereum(): EthereumProvider {
   const ethereum = (window as unknown as { ethereum?: EthereumProvider }).ethereum;
   if (!ethereum) throw new MetaMaskNotFoundError();
   return ethereum;
 }
 
-export async function connectWallet(): Promise<string> {
-  const ethereum = getEthereum();
-  const provider = new BrowserProvider(ethereum);
+async function getWalletConnectProvider(): Promise<WalletConnectProviderLike> {
+  if (wcProvider) return wcProvider;
+  if (!WALLETCONNECT_PROJECT_ID) throw new WalletConnectNotConfiguredError();
+
+  if (!wcProviderPromise) {
+    wcProviderPromise = import("@walletconnect/ethereum-provider").then(({ EthereumProvider }) =>
+      EthereumProvider.init({
+        projectId: WALLETCONNECT_PROJECT_ID,
+        chains: [CHAIN_ID_DECIMAL],
+        rpcMap: { [CHAIN_ID_DECIMAL]: CHAIN_RPC_URL },
+        showQrModal: true,
+        metadata: {
+          name: "WarrantyVault",
+          description: "Blockchain-powered warranty management",
+          url: window.location.origin,
+          icons: [],
+        },
+      }) as unknown as Promise<WalletConnectProviderLike>
+    );
+  }
+  wcProvider = await wcProviderPromise;
+  return wcProvider;
+}
+
+function getStoredWalletMethod(): WalletConnectionMethod | null {
+  return localStorage.getItem(WALLET_METHOD_STORAGE_KEY) as WalletConnectionMethod | null;
+}
+
+function setStoredWalletMethod(method: WalletConnectionMethod): void {
+  localStorage.setItem(WALLET_METHOD_STORAGE_KEY, method);
+}
+
+async function getActiveProvider(): Promise<EthereumProvider> {
+  if (getStoredWalletMethod() === "walletconnect") return getWalletConnectProvider();
+  return getInjectedEthereum();
+}
+
+export async function connectInjectedWallet(): Promise<string> {
+  const ethereum = getInjectedEthereum();
+  const provider = new BrowserProvider(ethereum as Eip1193Provider);
   const accounts = (await provider.send("eth_requestAccounts", [])) as string[];
+  setStoredWalletMethod("injected");
   await ensureBaseSepoliaNetwork();
   return accounts[0];
 }
 
+export async function connectWalletConnect(): Promise<string> {
+  const provider = await getWalletConnectProvider();
+  if (!provider.session) {
+    await provider.connect();
+  }
+  if (!provider.accounts.length) throw new Error("No accounts returned by the mobile wallet.");
+  setStoredWalletMethod("walletconnect");
+  return provider.accounts[0];
+}
+
+export async function connectWallet(method: WalletConnectionMethod = "injected"): Promise<string> {
+  return method === "walletconnect" ? connectWalletConnect() : connectInjectedWallet();
+}
+
+export async function disconnectWallet(): Promise<void> {
+  if (getStoredWalletMethod() === "walletconnect" && wcProvider) {
+    await wcProvider.disconnect().catch(() => undefined);
+  }
+  localStorage.removeItem(WALLET_METHOD_STORAGE_KEY);
+}
+
 export async function ensureBaseSepoliaNetwork(): Promise<void> {
-  const ethereum = getEthereum();
+  if (getStoredWalletMethod() === "walletconnect") return; // chain is fixed at WalletConnect session init
+  const ethereum = getInjectedEthereum();
   try {
     await ethereum.request({ method: "wallet_switchEthereumChain", params: [{ chainId: CHAIN_ID_HEX }] });
   } catch (error) {
@@ -58,8 +140,8 @@ export async function ensureBaseSepoliaNetwork(): Promise<void> {
 }
 
 export async function getSigner(): Promise<Signer> {
-  const ethereum = getEthereum();
-  const provider = new BrowserProvider(ethereum);
+  const ethereum = await getActiveProvider();
+  const provider = new BrowserProvider(ethereum as Eip1193Provider);
   return provider.getSigner();
 }
 
@@ -122,8 +204,8 @@ export async function sendRegisterTransaction(
   return receipt.hash as string;
 }
 
-export function onAccountsChanged(callback: (accounts: string[]) => void): () => void {
-  const ethereum = getEthereum();
+export async function onAccountsChanged(callback: (accounts: string[]) => void): Promise<() => void> {
+  const ethereum = await getActiveProvider();
   ethereum.on?.("accountsChanged", callback as (...args: unknown[]) => void);
   return () => ethereum.removeListener?.("accountsChanged", callback as (...args: unknown[]) => void);
 }

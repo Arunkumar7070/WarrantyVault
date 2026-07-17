@@ -3,8 +3,9 @@ import { Link, useNavigate } from "react-router-dom";
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import { ConnectWalletButton } from "@/components/wallet/ConnectWalletButton";
 import { useAuth } from "@/hooks/useAuth";
-import { useWalletAuth } from "@/hooks/useWalletAuth";
+import { disconnectWallet } from "@/services/walletService";
 import { getInitials, shortenAddress } from "@/utils/format";
 
 const navLinks = [
@@ -16,7 +17,6 @@ const navLinks = [
 
 export function Navbar() {
   const { isAuthenticated, user, logout } = useAuth();
-  const { connectAndLogin, connecting } = useWalletAuth();
   const navigate = useNavigate();
 
   return (
@@ -57,6 +57,7 @@ export function Navbar() {
                 variant="outline"
                 size="sm"
                 onClick={() => {
+                  void disconnectWallet();
                   logout();
                   navigate("/");
                 }}
@@ -65,9 +66,7 @@ export function Navbar() {
               </Button>
             </div>
           ) : (
-            <Button size="sm" onClick={connectAndLogin} disabled={connecting}>
-              {connecting ? "Connecting…" : "Connect Wallet"}
-            </Button>
+            <ConnectWalletButton size="sm" showIcon={false} />
           )}
         </div>
       </div>

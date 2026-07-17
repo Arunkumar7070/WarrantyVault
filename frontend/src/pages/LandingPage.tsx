@@ -4,8 +4,8 @@ import { Link } from "react-router-dom";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ConnectWalletButton } from "@/components/wallet/ConnectWalletButton";
 import { useAuth } from "@/hooks/useAuth";
-import { useWalletAuth } from "@/hooks/useWalletAuth";
 
 const features = [
   {
@@ -32,7 +32,6 @@ const features = [
 
 export function LandingPage() {
   const { isAuthenticated } = useAuth();
-  const { connectAndLogin, connecting } = useWalletAuth();
 
   return (
     <div>
@@ -79,9 +78,7 @@ export function LandingPage() {
               <Link to="/dashboard">Go to Dashboard</Link>
             </Button>
           ) : (
-            <Button size="lg" onClick={connectAndLogin} disabled={connecting}>
-              {connecting ? "Connecting…" : "Connect Wallet to Start"}
-            </Button>
+            <ConnectWalletButton size="lg" idleLabel="Connect Wallet to Start" />
           )}
           <Button size="lg" variant="outline" asChild>
             <Link to="/verify">Verify a Warranty</Link>

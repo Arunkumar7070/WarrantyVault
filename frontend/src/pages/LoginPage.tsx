@@ -1,14 +1,12 @@
-import { ShieldCheck, Wallet } from "lucide-react";
+import { ShieldCheck } from "lucide-react";
 import { Navigate } from "react-router-dom";
 
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { ConnectWalletButton } from "@/components/wallet/ConnectWalletButton";
 import { useAuth } from "@/hooks/useAuth";
-import { useWalletAuth } from "@/hooks/useWalletAuth";
 
 export function LoginPage() {
   const { isAuthenticated } = useAuth();
-  const { connectAndLogin, connecting } = useWalletAuth();
 
   if (isAuthenticated) return <Navigate to="/dashboard" replace />;
 
@@ -23,10 +21,7 @@ export function LoginPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <Button className="w-full" size="lg" onClick={connectAndLogin} disabled={connecting}>
-            <Wallet />
-            {connecting ? "Waiting for MetaMask…" : "Connect MetaMask"}
-          </Button>
+          <ConnectWalletButton className="w-full" size="lg" idleLabel="Connect Wallet" connectingLabel="Waiting for wallet…" />
         </CardContent>
       </Card>
     </div>
